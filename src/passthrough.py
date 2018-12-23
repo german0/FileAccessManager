@@ -3,16 +3,17 @@
 from __future__ import with_statement
 
 import os
+import stat
 import sys
 import errno
+import config
 
-from fuse import FUSE, FuseOSError, Operations
+from fuse import FUSE, FuseOSError, Operations, fuse_get_context
 
 
 class Passthrough(Operations):
     def __init__(self, root):
         self.root = root
-
     # Helpers
     # =======
 
@@ -22,11 +23,30 @@ class Passthrough(Operations):
         path = os.path.join(self.root, partial)
         return path
 
+    def getusers(self, lines):
+        users = {}
+        for line in lines:
+            user, contact, perms = line.split(':')
+            users[user] = (contact,perms)
+        return users
+
     # Filesystem methods
     # ==================
 
     def access(self, path, mode):
         full_path = self._full_path(path)
+        uid, gid, pid = fuse_get_context()
+
+        print(pid)
+        fd = open("users.reg","r")
+        content = fd.readlines()
+        users = self.getusers(content)
+        
+        #verify if current user exists
+        #if uid not in users:
+            #if not ask for contact and add user
+        #    input('You are not registered. Please enter your email:')
+
         if not os.access(full_path, mode):
             raise FuseOSError(errno.EACCES)
 
@@ -43,6 +63,10 @@ class Passthrough(Operations):
         st = os.lstat(full_path)
         return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
                      'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
+
+    #def getuid(self, path, fh=None):
+    #    full_path = self._full_path(path)
+    #    st
 
     def readdir(self, path, fh):
         full_path = self._full_path(path)
@@ -98,6 +122,8 @@ class Passthrough(Operations):
 
     def open(self, path, flags):
         print("No permission to acess this file. Please authenticate.")
+        uid, gid, pid = fuse_get_context()
+        print(uid)
         full_path = self._full_path(path)
         return os.open(full_path, flags)
 
@@ -128,10 +154,27 @@ class Passthrough(Operations):
         return self.flush(path, fh)
 
 
-def main(mountpoint):
-    root = '../root'
-    print(mountpoint)
-    FUSE(Passthrough(root), mountpoint, nothreads=True, foreground=True)
+def main(root):
+    mountpoint = 'mountpoint'
+    curr_dir = os.getcwd()
+    if (os.path.exists(mountpoint)):
+        print("Creating /mountpoint directory. Done.")
+        os.rmdir(mountpoint)
+        os.mkdir(mountpoint)
+    else:
+        print("Creating /mountpoint directory. Done.")
+        os.mkdir(mountpoint)
+    
+    st = os.stat(mountpoint)
+    print(st)
+
+    #creating users register
+    fd = open("users.reg","r+")
+    rootid = os.getuid()
+    user = '{}:{}:rwx'.format(rootid,config.EMAIL_ADDRESS)
+    fd.write(user)
+    fd.close()
+    FUSE(Passthrough(root), mountpoint, nothreads=True, foreground=True, **{'allow_other':True})
 
 if __name__ == '__main__':
     main(sys.argv[1])
