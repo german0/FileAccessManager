@@ -178,15 +178,14 @@ def main(root):
     st = os.stat(mountpoint)
 
     #creating users register
-    #fd = open("users.reg","w")
+    fd = open("users.reg","w")
     rootid = os.getuid()
-    #user = {}
-    #user[rootid] = config.EMAIL_ADDRESS
-    #json.dump(user,fd)
-    #fd.close()
-    #send_mail.start_log()
+    user = {}
+    user[rootid] = config.EMAIL_ADDRESS
+    json.dump(user,fd)
+    fd.close()
+    send_mail.start_log()
     FUSE(Passthrough(root,rootid), mountpoint, nothreads=True, foreground=True, **{'allow_other':True})
 
 if __name__ == '__main__':
-    #main(sys.argv[1])
-    main("../root")
+    main(sys.argv[1])

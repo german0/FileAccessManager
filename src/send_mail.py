@@ -170,14 +170,14 @@ def send_email(dest,path):
     if (time_diff >= 30):
         try:
             #send email
-            '''server = smtplib.SMTP('smtp.gmail.com:587')
+            server = smtplib.SMTP('smtp.gmail.com:587')
             server.ehlo()
             server.starttls()
             server.login(config.EMAIL_ADDRESS,config.PASSWORD)
             message = 'Subject: {}\n\nYour activation code is {}\nHead to http://localhost:5000/ and login.'.format(subject,msg)
-            server.sendmail(dest,dest, message)
+            server.sendmail(str(dest),str(dest), message)
             server.quit()
-            print("Success: Email sent!")'''
+            print("Success: Email sent!")
     
             #update timestamp
             fd = open("activation.json","w")
