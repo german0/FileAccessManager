@@ -6,14 +6,18 @@ import os
 import stat
 import sys
 import errno
+import time
+import send_mail
 import config
+import json
 
 from fuse import FUSE, FuseOSError, Operations, fuse_get_context
 
 
 class Passthrough(Operations):
-    def __init__(self, root):
+    def __init__(self, root,idroot):
         self.root = root
+        self.idroot = idroot
     # Helpers
     # =======
 
@@ -35,20 +39,15 @@ class Passthrough(Operations):
 
     def access(self, path, mode):
         full_path = self._full_path(path)
-        uid, gid, pid = fuse_get_context()
-
-        print(pid)
         fd = open("users.reg","r")
-        content = fd.readlines()
-        users = self.getusers(content)
-        
-        #verify if current user exists
-        #if uid not in users:
-            #if not ask for contact and add user
-        #    input('You are not registered. Please enter your email:')
-
-        if not os.access(full_path, mode):
-            raise FuseOSError(errno.EACCES)
+        data = json.load(fd)
+        fd.close()
+        uid,gui,pid = fuse_get_context()
+        if (str(uid) not in data):
+            send_mail.redirect(uid)
+        else:
+            if not os.access(full_path, mode):
+                raise FuseOSError(errno.EACCES)
 
     def chmod(self, path, mode):
         full_path = self._full_path(path)
@@ -64,9 +63,6 @@ class Passthrough(Operations):
         return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
                      'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
-    #def getuid(self, path, fh=None):
-    #    full_path = self._full_path(path)
-    #    st
 
     def readdir(self, path, fh):
         full_path = self._full_path(path)
@@ -121,14 +117,28 @@ class Passthrough(Operations):
     # ============
 
     def open(self, path, flags):
-        print("No permission to acess this file. Please authenticate.")
-        uid, gid, pid = fuse_get_context()
-        print(uid)
         full_path = self._full_path(path)
+        uid, gid, pid = fuse_get_context()
+        fd = open("users.reg","r")
+        users = json.load(fd)
+        fd.close()
+        if (uid != self.idroot):
+            contact = users[str(uid)]
+            fd = open("activation.json","r")
+            data = json.load(fd)
+            fd.close()
+            info = data[str(contact)]
+            if str(full_path) not in info["files"]:
+                send_mail.send_email(str(contact),full_path)
+                raise FuseOSError(errno.EACCES)
+            else:
+                return os.open(full_path,flags)
         return os.open(full_path, flags)
 
     def create(self, path, mode, fi=None):
         full_path = self._full_path(path)
+        uid, gid, pid = fuse_get_context()
+        send_mail.add_file_access(uid,full_path)
         return os.open(full_path, os.O_WRONLY | os.O_CREAT, mode)
 
     def read(self, path, length, offset, fh):
@@ -166,15 +176,17 @@ def main(root):
         os.mkdir(mountpoint)
     
     st = os.stat(mountpoint)
-    print(st)
 
     #creating users register
-    fd = open("users.reg","r+")
+    #fd = open("users.reg","w")
     rootid = os.getuid()
-    user = '{}:{}:rwx'.format(rootid,config.EMAIL_ADDRESS)
-    fd.write(user)
-    fd.close()
-    FUSE(Passthrough(root), mountpoint, nothreads=True, foreground=True, **{'allow_other':True})
+    #user = {}
+    #user[rootid] = config.EMAIL_ADDRESS
+    #json.dump(user,fd)
+    #fd.close()
+    #send_mail.start_log()
+    FUSE(Passthrough(root,rootid), mountpoint, nothreads=True, foreground=True, **{'allow_other':True})
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    #main(sys.argv[1])
+    main("../root")
